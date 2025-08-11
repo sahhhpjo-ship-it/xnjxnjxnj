@@ -4,6 +4,8 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler
 from command import fox_command  # Импортируем fox_command из command.py
 
+fox_sudo = None  # Определение fox_sudo для предотвращения ошибки
+
 # Получаем имя файла для использования в fox_command
 file = __file__  # Используем __file__ для получения имени текущего файла
 basename = os.path.basename(file)
@@ -32,3 +34,4 @@ async def say_command(client, message):
 
 
 print("Модуль say.py загружен")
+
