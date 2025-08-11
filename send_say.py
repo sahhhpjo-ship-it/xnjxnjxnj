@@ -4,19 +4,21 @@ from pyrogram import Client, filters
 from pyrogram.handlers import MessageHandler
 from command import fox_command  # Импортируем fox_command из command.py
 
-fox_sudo = None  # Определение fox_sudo для предотвращения ошибки
-
 # Получаем имя файла для использования в fox_command
 file = __file__  # Используем __file__ для получения имени текущего файла
 basename = os.path.basename(file)
 
 # Определение команды say
-@Client.on_message(filters.me & fox_command("say", "Отправляет текст, указанный пользователем", basename))
+@Client.on_message(fox_command("say", "Отправляет текст, указанный пользователем", basename) & filters.me)
 async def say_command(client, message):
     """Отправляет текст, указанный пользователем."""
     try:
-        # Получаем текст сообщения
-        text = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
+        # Получаем текст из сообщения, используя более надежный способ
+        args = message.text.split()
+        if len(args) > 1:
+            text = " ".join(args[1:])  # Соединяем все аргументы после команды
+        else:
+            text = None
 
         # Проверяем, что текст указан
         if not text:
@@ -27,11 +29,16 @@ async def say_command(client, message):
         await message.delete()
 
         # Отправляем текст
-        await client.send_message(message.chat.id, text)
+        try:
+            await client.send_message(message.chat.id, text)
+        except Exception as send_error:
+            print(f"DEBUG: Ошибка при отправке сообщения: {send_error}")
+            await message.reply_text(f"Ошибка при отправке сообщения: {send_error}")
+
 
     except Exception as e:
-        print(f"Произошла ошибка: {e}")
+        print(f"DEBUG: Общая ошибка: {e}")
+        await message.reply_text(f"Произошла ошибка: {e}")
 
 
 print("Модуль say.py загружен")
-
