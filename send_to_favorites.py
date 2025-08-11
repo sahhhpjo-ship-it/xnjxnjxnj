@@ -9,7 +9,7 @@ file = __file__  # Используем __file__ для получения им�
 basename = os.path.basename(file)
 
 
-@Client.on_message(fox_command("fmsg", "Отправляет текст в избранное", basename, "[текст]") & filters.me)
+@Client.on_message(fox_command("fmsg", "Отправляет текст в избранное", basename) & filters.me)
 async def send_to_favorites(client, message):
     """Отправляет указанный текст в Избранное."""
     try:
@@ -36,4 +36,5 @@ async def help_fmsg(client, message):
         f"""<b>fmsg</b> - Отправляет текст в избранное.\nИспользование: fmsg [текст]"""
     )
 
+print("Модуль send_to_favorites.py загружен")
 
