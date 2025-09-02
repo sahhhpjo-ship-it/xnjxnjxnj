@@ -254,6 +254,8 @@ local function startFollow(targetPlayer)
 		local myHRP = nil
 		local myHumanoid = nil
 		local targetHRP = nil
+		local stuckCheckPos = nil
+		local stuckCheckTime = 0
 
 		while followActive and followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") do
 			myChar = LocalPlayer.Character
@@ -261,15 +263,13 @@ local function startFollow(targetPlayer)
 			myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
 			targetHRP = followTarget.Character.HumanoidRootPart
 			if not myHRP or not myHumanoid or not targetHRP then
-				task.wait(0.1)
+				task.wait(0.05)
 				continue
 			end
 
-			-- Remove teleportation logic for natural movement
-
-			-- Recalculate path if target moved >1 stud or every 0.2s
-			local targetMoved = (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 1)
-			local timeElapsed = (os.clock() - lastPathTime) > 0.2
+			-- Recalculate path if target moved >0.5 stud or every 0.1s
+			local targetMoved = (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 0.5)
+			local timeElapsed = (os.clock() - lastPathTime) > 0.1
 			if targetMoved or timeElapsed or not path or path.Status ~= Enum.PathStatus.Success then
 				lastTargetPos = targetHRP.Position
 				lastPathTime = os.clock()
@@ -279,48 +279,57 @@ local function startFollow(targetPlayer)
 					AgentCanJump = true,
 					AgentJumpHeight = 10,
 					AgentMaxSlope = 45,
-					WaypointSpacing = 2,
+					WaypointSpacing = 1,
 				})
 				path:ComputeAsync(myHRP.Position, targetHRP.Position)
 			end
 
-			-- Move along waypoints
 			local waypoints = path and path:GetWaypoints() or {}
 			for i = 1, #waypoints do
 				if not followActive then break end
 				local wp = waypoints[i]
 				if wp and myHumanoid then
-					-- If target moved >1 stud, break and recalc path
-					if (targetHRP.Position - lastTargetPos).Magnitude > 1 then
+					-- If target moved >0.5 stud, break and recalc path
+					if (targetHRP.Position - lastTargetPos).Magnitude > 0.5 then
 						break
 					end
+
+					-- Face the target before moving
+					local lookAt = CFrame.lookAt(myHRP.Position, Vector3.new(targetHRP.Position.X, myHRP.Position.Y, targetHRP.Position.Z))
+					myHRP.CFrame = lookAt
+
 					myHumanoid:MoveTo(wp.Position)
 					if wp.Action == Enum.PathWaypointAction.Jump then
 						myHumanoid.Jump = true
 					end
+
 					local reached = false
 					local moveConn = myHumanoid.MoveToFinished:Connect(function(success)
 						reached = true
 					end)
+
 					local t0 = os.clock()
-					while not reached and followActive and (os.clock()-t0 < 0.7) do
-						task.wait(0.03)
-						-- If target moved >1 stud, break and recalc path
-						if (targetHRP.Position - lastTargetPos).Magnitude > 1 then
+					local stuckStartPos = myHRP.Position
+					while not reached and followActive and (os.clock()-t0 < 0.4) do
+						task.wait(0.01)
+						-- If target moved >0.5 stud, break and recalc path
+						if (targetHRP.Position - lastTargetPos).Magnitude > 0.5 then
+							break
+						end
+						-- Stuck check: if not moved >0.5 stud in 0.3s, break and recalc
+						if (os.clock()-t0 > 0.3) and ((myHRP.Position - stuckStartPos).Magnitude < 0.5) then
 							break
 						end
 					end
 					moveConn:Disconnect()
-					task.wait(0.03)
+					task.wait(0.01)
 				end
-				-- If path is not valid, break and recompute
 				if path.Status == Enum.PathStatus.NoPath then
 					break
 				end
 			end
 
-			-- Short delay before next path check
-			task.wait(0.05)
+			task.wait(0.01)
 		end
 		followActive = false
 		followTarget = nil
@@ -406,4 +415,3 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
-
