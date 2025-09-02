@@ -253,14 +253,6 @@ local function startFollow(targetPlayer)
 		local myHRP = nil
 		local myHumanoid = nil
 		local targetHRP = nil
-		local waypointIdx = 1
-		local reachedConnection = nil
-		local blockedConnection = nil
-
-		local function cleanupConnections()
-			if reachedConnection then reachedConnection:Disconnect() reachedConnection = nil end
-			if blockedConnection then blockedConnection:Disconnect() blockedConnection = nil end
-		end
 
 		while followActive and followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") do
 			myChar = LocalPlayer.Character
@@ -273,7 +265,7 @@ local function startFollow(targetPlayer)
 			end
 
 			-- Recalculate path if target moved significantly or no path yet
-			if (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 4) or not path then
+			if (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 4) or not path or path.Status ~= Enum.PathStatus.Success then
 				lastTargetPos = targetHRP.Position
 				path = PathfindingService:CreatePath({
 					AgentRadius = 2,
@@ -282,25 +274,15 @@ local function startFollow(targetPlayer)
 					AgentJumpHeight = 10,
 					AgentMaxSlope = 45,
 					WaypointSpacing = 2,
-					Start = myHRP.Position,
-					Finish = targetHRP.Position + (targetHRP.CFrame.LookVector * -2)
 				})
 				path:ComputeAsync(myHRP.Position, targetHRP.Position + (targetHRP.CFrame.LookVector * -2))
-				waypointIdx = 1
-				cleanupConnections()
-				reachedConnection = path.Reached:Connect(function()
-					waypointIdx = waypointIdx + 1
-				end)
-				blockedConnection = path.Blocked:Connect(function()
-					-- Recompute path if blocked
-					path = nil
-				end)
 			end
 
 			-- Move along waypoints
 			local waypoints = path and path:GetWaypoints() or {}
-			while followActive and path and waypoints and waypointIdx <= #waypoints do
-				local wp = waypoints[waypointIdx]
+			for i = 1, #waypoints do
+				if not followActive then break end
+				local wp = waypoints[i]
 				if wp and myHumanoid then
 					myHumanoid:MoveTo(wp.Position)
 					if wp.Action == Enum.PathWaypointAction.Jump then
@@ -315,16 +297,16 @@ local function startFollow(targetPlayer)
 						task.wait(0.05)
 					end
 					moveConn:Disconnect()
-					waypointIdx = waypointIdx + 1
-				else
-					waypointIdx = waypointIdx + 1
+				end
+				-- If path is blocked, break and recompute
+				if path.Status == Enum.PathStatus.Blocked then
+					break
 				end
 			end
 
 			-- If finished, wait a bit and recalc path
 			task.wait(0.2)
 		end
-		cleanupConnections()
 		followActive = false
 		followTarget = nil
 	end)
