@@ -3,10 +3,10 @@ local LocalPlayer = Players.LocalPlayer
 local TeleportService = game:GetService("TeleportService")
 local StarterGui = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextChatService = game:GetService("TextChatService")
 
 local SUDO_USER = "turripy"
 
--- Improved player finding logic: supports shortened nicknames, display names, and preview matching
 local function findPlayerByName(name)
 	name = name:lower()
 	local found = {}
@@ -17,11 +17,9 @@ local function findPlayerByName(name)
 			table.insert(found, player)
 		end
 	end
-	-- If multiple matches, return the first one (preview logic)
 	return found[1]
 end
 
--- New Strong Fling Logic (based on user sample)
 local function strongFling(target, duration)
 	local character = LocalPlayer.Character
 	if not character or not character:FindFirstChild("HumanoidRootPart") then return end
@@ -29,7 +27,6 @@ local function strongFling(target, duration)
 	local hrp = character.HumanoidRootPart
 	local targetHRP = target.Character.HumanoidRootPart
 
-	-- Create fake part and attachments for forced alignment
 	local fakepart = Instance.new("Part", workspace)
 	fakepart.Anchored = true
 	fakepart.Size = Vector3.new(5,5,5)
@@ -51,7 +48,6 @@ local function strongFling(target, duration)
 	align.Visible = true
 	align.Mode = Enum.PositionAlignmentMode.TwoAttachment
 
-	-- Particle effect
 	local partic = Instance.new("ParticleEmitter", fakepart)
 	partic.Texture = "rbxassetid://15273937357"
 	partic.SpreadAngle = Vector2.new(-180,180)
@@ -61,7 +57,6 @@ local function strongFling(target, duration)
 	partic.Lifetime = NumberRange.new(0.7,1)
 	partic.RotSpeed = NumberRange.new(-45,45)
 
-	-- Color cycling
 	task.spawn(function()
 		while fakepart.Parent do
 			task.wait()
@@ -73,7 +68,6 @@ local function strongFling(target, duration)
 		end
 	end)
 
-	-- Make character look neon
 	for _, v in character:GetDescendants() do
 		if v:IsA("BasePart") then
 			if v.Name ~= "HumanoidRootPart" then
@@ -85,12 +79,10 @@ local function strongFling(target, duration)
 		end
 	end
 
-	-- Camera effect
 	if workspace.CurrentCamera then
 		workspace.CurrentCamera.CameraSubject = fakepart
 	end
 
-	-- Physics and spin logic
 	local startTime = os.clock()
 	local power = 100
 	local attack = 5
@@ -135,7 +127,6 @@ local function strongFling(target, duration)
 		end
 	end)
 
-	-- Main fling loop
 	repeat
 		if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then break end
 		if not character or not hrp then break end
@@ -151,7 +142,6 @@ local function strongFling(target, duration)
 		task.wait()
 	until os.clock() - startTime > duration or not target.Character:FindFirstChild("Head")
 
-	-- Cleanup
 	if heartbeatConn then heartbeatConn:Disconnect() end
 	if fakepart then fakepart:Destroy() end
 end
@@ -206,7 +196,6 @@ local function resetCharacter()
 	end
 end
 
--- Fling tracking logic
 local flingActive = false
 local flingTask = nil
 
@@ -220,7 +209,6 @@ local function startTrackingFling(targetPlayer, duration)
 	end)
 end
 
--- Loopfling logic
 local loopFlingActive = false
 local loopFlingTask = nil
 local loopFlingTarget = nil
@@ -251,7 +239,6 @@ local function stopLoopFling()
 	resetCharacter()
 end
 
--- Follow logic (improved: walk/run behind target like a real player)
 local followActive = false
 local followTask = nil
 local followTarget = nil
@@ -267,7 +254,7 @@ local function startFollow(targetPlayer)
 			local myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
 			local targetHRP = followTarget.Character.HumanoidRootPart
 			if myHRP and myHumanoid then
-				local destination = targetHRP.Position + (targetHRP.CFrame.LookVector * -2) -- follow behind
+				local destination = targetHRP.Position + (targetHRP.CFrame.LookVector * -2)
 				local distance = (myHRP.Position - destination).Magnitude
 				if distance > 1 then
 					myHumanoid:MoveTo(destination)
@@ -288,18 +275,23 @@ local function stopFollow()
 	end
 end
 
--- Say logic (simulate player chat input using SayMessageRequest RemoteEvent)
+-- Say logic (support TextChatService and legacy chat)
 local function sayPhrase(phrase)
 	if phrase and phrase ~= "" then
-		local chatEvent = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
-		if chatEvent and chatEvent:FindFirstChild("SayMessageRequest") then
-			chatEvent.SayMessageRequest:FireServer(phrase, "All")
+		if TextChatService and TextChatService:FindFirstChild("TextChannels") then
+			local generalChannel = TextChatService.TextChannels:FindFirstChild("RBXGeneral") or TextChatService.TextChannels:FindFirstChild("General")
+			if generalChannel then
+				generalChannel:SendAsync(phrase)
+				return
+			end
 		end
-		-- No fallback to system message, only send as player
+		local chatEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+		if chatEvents and chatEvents:FindFirstChild("SayMessageRequest") then
+			chatEvents.SayMessageRequest:FireServer(phrase, "All")
+		end
 	end
 end
 
--- Listen for chat messages from SUDO_USER
 local function onChatted(player)
 	player.Chatted:Connect(function(msg)
 		if player.Name ~= SUDO_USER then return end
@@ -342,7 +334,6 @@ local function onChatted(player)
 	end)
 end
 
--- Connect to all current players and future players
 for _, player in Players:GetPlayers() do
 	onChatted(player)
 end
@@ -353,7 +344,5 @@ end)
 
 LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
-	stopLoopFling()
 	stopFollow()
 end)
-
