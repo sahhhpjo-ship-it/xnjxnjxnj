@@ -298,8 +298,8 @@ local function startFollow(targetPlayer)
 					end
 					moveConn:Disconnect()
 				end
-				-- If path is blocked, break and recompute
-				if path.Status == Enum.PathStatus.Blocked then
+				-- If path is not valid, break and recompute
+				if path.Status == Enum.PathStatus.NoPath then
 					break
 				end
 			end
