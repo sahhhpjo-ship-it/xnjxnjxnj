@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local TeleportService = game:GetService("TeleportService")
 local StarterGui = game:GetService("StarterGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local SUDO_USER = "turripy"
 
@@ -250,7 +251,7 @@ local function stopLoopFling()
 	resetCharacter()
 end
 
--- Follow logic
+-- Follow logic (improved: walk/run behind target like a real player)
 local followActive = false
 local followTask = nil
 local followTarget = nil
@@ -263,14 +264,13 @@ local function startFollow(targetPlayer)
 		while followActive and followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") do
 			local myChar = LocalPlayer.Character
 			local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			local myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
 			local targetHRP = followTarget.Character.HumanoidRootPart
-			if myHRP then
-				local distance = (myHRP.Position - targetHRP.Position).Magnitude
-				if distance > 10 then
-					myHRP.CFrame = targetHRP.CFrame + Vector3.new(0, 3, 0)
-				else
-					local direction = (targetHRP.Position - myHRP.Position).Unit
-					myHRP.CFrame = myHRP.CFrame + direction * math.min(distance, 0.5)
+			if myHRP and myHumanoid then
+				local destination = targetHRP.Position + (targetHRP.CFrame.LookVector * -2) -- follow behind
+				local distance = (myHRP.Position - destination).Magnitude
+				if distance > 1 then
+					myHumanoid:MoveTo(destination)
 				end
 			end
 			task.wait(0.1)
@@ -288,48 +288,14 @@ local function stopFollow()
 	end
 end
 
--- Dance logic
-local function playDance()
-	local character = LocalPlayer.Character
-	if character and character:FindFirstChild("Humanoid") then
-		local humanoid = character.Humanoid
-		-- Try standard Roblox dance emotes
-		local emotes = {"Dance", "Dance2", "Dance3"}
-		for i = 1, #emotes do
-			humanoid:PlayEmote(emotes[i])
-			task.wait(1.5)
-		end
-	end
-end
-
--- Say logic (simulate player chat input)
+-- Say logic (simulate player chat input using SayMessageRequest RemoteEvent)
 local function sayPhrase(phrase)
 	if phrase and phrase ~= "" then
-		local success = false
-		local chatBar = nil
-		local CoreGui = game:GetService("CoreGui")
-		-- Try to find the chat input bar
-		for _, descendant in CoreGui:GetDescendants() do
-			if descendant:IsA("TextBox") and descendant.Name == "ChatBar" then
-				chatBar = descendant
-				break
-			end
+		local chatEvent = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+		if chatEvent and chatEvent:FindFirstChild("SayMessageRequest") then
+			chatEvent.SayMessageRequest:FireServer(phrase, "All")
 		end
-		if chatBar then
-			chatBar.Text = phrase
-			chatBar:CaptureFocus()
-			chatBar.FocusLost:Fire(true) -- Simulate pressing Enter
-			success = true
-		end
-		-- If not found, fallback to system message (last resort)
-		if not success then
-			StarterGui:SetCore("ChatMakeSystemMessage", {
-				Text = phrase,
-				Color = Color3.new(1,1,1),
-				Font = Enum.Font.SourceSansBold,
-				FontSize = Enum.FontSize.Size24
-			})
-		end
+		-- No fallback to system message, only send as player
 	end
 end
 
@@ -369,8 +335,6 @@ local function onChatted(player)
 			startFollow(target)
 		elseif command == "!unfollow" then
 			stopFollow()
-		elseif command == "!dance" then
-			playDance()
 		elseif command == "!say" and #args > 1 then
 			local phrase = msg:sub(#command + 2)
 			sayPhrase(phrase)
@@ -392,3 +356,4 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopLoopFling()
 	stopFollow()
 end)
+
