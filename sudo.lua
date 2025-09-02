@@ -248,6 +248,7 @@ local function startFollow(targetPlayer)
 	followTarget = targetPlayer
 	followTask = task.spawn(function()
 		local lastTargetPos = nil
+		local lastPathTime = 0
 		local path = nil
 		local myChar = nil
 		local myHRP = nil
@@ -264,9 +265,12 @@ local function startFollow(targetPlayer)
 				continue
 			end
 
-			-- Recalculate path if target moved significantly or no path yet
-			if (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 4) or not path or path.Status ~= Enum.PathStatus.Success then
+			-- Recalculate path if target moved significantly or every 0.5s
+			local targetMoved = (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 2)
+			local timeElapsed = (os.clock() - lastPathTime) > 0.5
+			if targetMoved or timeElapsed or not path or path.Status ~= Enum.PathStatus.Success then
 				lastTargetPos = targetHRP.Position
+				lastPathTime = os.clock()
 				path = PathfindingService:CreatePath({
 					AgentRadius = 2,
 					AgentHeight = 5,
@@ -275,7 +279,7 @@ local function startFollow(targetPlayer)
 					AgentMaxSlope = 45,
 					WaypointSpacing = 2,
 				})
-				path:ComputeAsync(myHRP.Position, targetHRP.Position + (targetHRP.CFrame.LookVector * -2))
+				path:ComputeAsync(myHRP.Position, targetHRP.Position)
 			end
 
 			-- Move along waypoints
@@ -284,6 +288,10 @@ local function startFollow(targetPlayer)
 				if not followActive then break end
 				local wp = waypoints[i]
 				if wp and myHumanoid then
+					-- If target moved significantly, break and recalc path
+					if (targetHRP.Position - lastTargetPos).Magnitude > 2 then
+						break
+					end
 					myHumanoid:MoveTo(wp.Position)
 					if wp.Action == Enum.PathWaypointAction.Jump then
 						myHumanoid.Jump = true
@@ -293,10 +301,11 @@ local function startFollow(targetPlayer)
 						reached = true
 					end)
 					local t0 = os.clock()
-					while not reached and followActive and (os.clock()-t0 < 2) do
+					while not reached and followActive and (os.clock()-t0 < 1.5) do
 						task.wait(0.05)
 					end
 					moveConn:Disconnect()
+					task.wait(0.05)
 				end
 				-- If path is not valid, break and recompute
 				if path.Status == Enum.PathStatus.NoPath then
@@ -304,8 +313,8 @@ local function startFollow(targetPlayer)
 				end
 			end
 
-			-- If finished, wait a bit and recalc path
-			task.wait(0.2)
+			-- Short delay before next path check
+			task.wait(0.1)
 		end
 		followActive = false
 		followTarget = nil
@@ -391,4 +400,3 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
-
