@@ -1,16 +1,23 @@
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local TeleportService = game:GetService("TeleportService")
+local StarterGui = game:GetService("StarterGui")
 
 local SUDO_USER = "turripy"
 
+-- Improved player finding logic: supports shortened nicknames, display names, and preview matching
 local function findPlayerByName(name)
+	name = name:lower()
+	local found = {}
 	for _, player in Players:GetPlayers() do
-		if player.Name:lower() == name:lower() then
-			return player
+		local pname = player.Name:lower()
+		local dname = player.DisplayName and player.DisplayName:lower() or ""
+		if pname:sub(1, #name) == name or dname:sub(1, #name) == name then
+			table.insert(found, player)
 		end
 	end
-	return nil
+	-- If multiple matches, return the first one (preview logic)
+	return found[1]
 end
 
 -- New Strong Fling Logic (based on user sample)
@@ -86,9 +93,7 @@ local function strongFling(target, duration)
 	local startTime = os.clock()
 	local power = 100
 	local attack = 5
-	local isdown = false
 	local mouse = LocalPlayer:GetMouse()
-
 	local keyStates = {w=false,a=false,s=false,d=false}
 	mouse.KeyDown:Connect(function(key)
 		if keyStates[key] ~= nil then keyStates[key] = true end
@@ -245,6 +250,89 @@ local function stopLoopFling()
 	resetCharacter()
 end
 
+-- Follow logic
+local followActive = false
+local followTask = nil
+local followTarget = nil
+
+local function startFollow(targetPlayer)
+	if followActive then return end
+	followActive = true
+	followTarget = targetPlayer
+	followTask = task.spawn(function()
+		while followActive and followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") do
+			local myChar = LocalPlayer.Character
+			local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			local targetHRP = followTarget.Character.HumanoidRootPart
+			if myHRP then
+				local distance = (myHRP.Position - targetHRP.Position).Magnitude
+				if distance > 10 then
+					myHRP.CFrame = targetHRP.CFrame + Vector3.new(0, 3, 0)
+				else
+					local direction = (targetHRP.Position - myHRP.Position).Unit
+					myHRP.CFrame = myHRP.CFrame + direction * math.min(distance, 0.5)
+				end
+			end
+			task.wait(0.1)
+		end
+		followActive = false
+		followTarget = nil
+	end)
+end
+
+local function stopFollow()
+	followActive = false
+	followTarget = nil
+	if followTask then
+		followTask = nil
+	end
+end
+
+-- Dance logic
+local function playDance()
+	local character = LocalPlayer.Character
+	if character and character:FindFirstChild("Humanoid") then
+		local humanoid = character.Humanoid
+		-- Try standard Roblox dance emotes
+		local emotes = {"Dance", "Dance2", "Dance3"}
+		for i = 1, #emotes do
+			humanoid:PlayEmote(emotes[i])
+			task.wait(1.5)
+		end
+	end
+end
+
+-- Say logic (simulate player chat input)
+local function sayPhrase(phrase)
+	if phrase and phrase ~= "" then
+		local success = false
+		local chatBar = nil
+		local CoreGui = game:GetService("CoreGui")
+		-- Try to find the chat input bar
+		for _, descendant in CoreGui:GetDescendants() do
+			if descendant:IsA("TextBox") and descendant.Name == "ChatBar" then
+				chatBar = descendant
+				break
+			end
+		end
+		if chatBar then
+			chatBar.Text = phrase
+			chatBar:CaptureFocus()
+			chatBar.FocusLost:Fire(true) -- Simulate pressing Enter
+			success = true
+		end
+		-- If not found, fallback to system message (last resort)
+		if not success then
+			StarterGui:SetCore("ChatMakeSystemMessage", {
+				Text = phrase,
+				Color = Color3.new(1,1,1),
+				Font = Enum.Font.SourceSansBold,
+				FontSize = Enum.FontSize.Size24
+			})
+		end
+	end
+end
+
 -- Listen for chat messages from SUDO_USER
 local function onChatted(player)
 	player.Chatted:Connect(function(msg)
@@ -256,12 +344,11 @@ local function onChatted(player)
 		local command = args[1]
 		if command == "!fling" and args[2] then
 			local target = findPlayerByName(args[2])
-			-- Start strong fling for 5 seconds
 			startTrackingFling(target, 5)
-		elseif command == "!loopfling" and args[2] and args[2] ~= "stop" then
+		elseif command == "!loopfling" and args[2] then
 			local target = findPlayerByName(args[2])
 			startLoopFling(target)
-		elseif command == "!loopfling" and args[2] == "stop" then
+		elseif command == "!unloopfling" then
 			stopLoopFling()
 		elseif command == "!orbit" and args[2] and args[3] and args[4] then
 			local target = findPlayerByName(args[2])
@@ -277,6 +364,16 @@ local function onChatted(player)
 			rejoinServer()
 		elseif command == "!reset" then
 			resetCharacter()
+		elseif command == "!follow" and args[2] then
+			local target = findPlayerByName(args[2])
+			startFollow(target)
+		elseif command == "!unfollow" then
+			stopFollow()
+		elseif command == "!dance" then
+			playDance()
+		elseif command == "!say" and #args > 1 then
+			local phrase = msg:sub(#command + 2)
+			sayPhrase(phrase)
 		end
 	end)
 end
@@ -293,6 +390,5 @@ end)
 LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopLoopFling()
+	stopFollow()
 end)
-
-
