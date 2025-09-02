@@ -13,7 +13,7 @@ local function findPlayerByName(name)
 	return nil
 end
 
--- Strong Fling Logic (uses repeat-loop from user sample)
+-- New Strong Fling Logic (based on user sample)
 local function strongFling(target, duration)
 	local character = LocalPlayer.Character
 	if not character or not character:FindFirstChild("HumanoidRootPart") then return end
@@ -21,21 +21,29 @@ local function strongFling(target, duration)
 	local hrp = character.HumanoidRootPart
 	local targetHRP = target.Character.HumanoidRootPart
 
-	-- Create BodyThrust
-	local thrust = hrp:FindFirstChild("YeetForce") or Instance.new('BodyThrust', hrp)
-	thrust.Force = Vector3.new(99999,99999,99999)
-	thrust.Name = "YeetForce"
-	thrust.Location = targetHRP.Position
-
-	-- Create fake part for visual effect
+	-- Create fake part and attachments for forced alignment
 	local fakepart = Instance.new("Part", workspace)
 	fakepart.Anchored = true
 	fakepart.Size = Vector3.new(5,5,5)
-	fakepart.Position = hrp.Position
+	fakepart.Position = targetHRP.Position
 	fakepart.CanCollide = false
 	fakepart.Transparency = 0.5
 	fakepart.Material = Enum.Material.ForceField
 
+	local att1 = Instance.new("Attachment", fakepart)
+	local att2 = Instance.new("Attachment", hrp)
+	local align = Instance.new("AlignPosition", fakepart)
+	align.Attachment0 = att2
+	align.Attachment1 = att1
+	align.RigidityEnabled = true
+	align.Responsiveness = math.huge
+	align.MaxForce = math.huge
+	align.MaxVelocity = math.huge
+	align.MaxAxesForce = Vector3.new(math.huge,math.huge,math.huge)
+	align.Visible = true
+	align.Mode = Enum.PositionAlignmentMode.TwoAttachment
+
+	-- Particle effect
 	local partic = Instance.new("ParticleEmitter", fakepart)
 	partic.Texture = "rbxassetid://15273937357"
 	partic.SpreadAngle = Vector2.new(-180,180)
@@ -69,28 +77,77 @@ local function strongFling(target, duration)
 		end
 	end
 
-	-- Fling loop
+	-- Camera effect
+	if workspace.CurrentCamera then
+		workspace.CurrentCamera.CameraSubject = fakepart
+	end
+
+	-- Physics and spin logic
 	local startTime = os.clock()
+	local power = 100
+	local attack = 5
+	local isdown = false
+	local mouse = LocalPlayer:GetMouse()
+
+	local keyStates = {w=false,a=false,s=false,d=false}
+	mouse.KeyDown:Connect(function(key)
+		if keyStates[key] ~= nil then keyStates[key] = true end
+	end)
+	mouse.KeyUp:Connect(function(key)
+		if keyStates[key] ~= nil then keyStates[key] = false end
+	end)
+
+	local heartbeatConn
+	heartbeatConn = game:GetService("RunService").Heartbeat:Connect(function()
+		if keyStates.w then
+			fakepart.Position = fakepart.Position + workspace.CurrentCamera.CFrame.LookVector * 2
+		end
+		if keyStates.a then
+			fakepart.Position = fakepart.Position - workspace.CurrentCamera.CFrame.RightVector * 2
+		end
+		if keyStates.s then
+			fakepart.Position = fakepart.Position - workspace.CurrentCamera.CFrame.LookVector * 2
+		end
+		if keyStates.d then
+			fakepart.Position = fakepart.Position + workspace.CurrentCamera.CFrame.RightVector * 2
+		end
+	end)
+
+	local angularSpin = task.spawn(function()
+		while os.clock() - startTime < duration do
+			hrp.AssemblyAngularVelocity = Vector3.new(math.random(-500,50),math.random(-500,500) * power,math.random(-5,5))
+			task.wait(math.random(0,attack)/50)
+		end
+	end)
+
+	local swimState = task.spawn(function()
+		while os.clock() - startTime < duration do
+			character.Humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
+			task.wait(.5)
+			character.Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+			task.wait(.5)
+		end
+	end)
+
+	-- Main fling loop
 	repeat
 		if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then break end
 		if not character or not hrp then break end
 		targetHRP = target.Character.HumanoidRootPart
 		hrp.CFrame = targetHRP.CFrame
-		thrust.Location = targetHRP.Position
-		hrp.AssemblyAngularVelocity = Vector3.new(math.random(-2000,2000),math.random(-2000,2000),math.random(-2000,2000))
-		hrp.AssemblyLinearVelocity = Vector3.new(math.random(-250,250),math.random(-500,500),math.random(-250,250))
+		hrp.AssemblyAngularVelocity = Vector3.new(10000,9999,-9999)
+		hrp.AssemblyLinearVelocity = Vector3.new(-17.7,500,17.7)
 		fakepart.Position = targetHRP.Position
 		fakepart.Rotation = hrp.Rotation
-		task.wait(0.05)
+		character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+		character.Humanoid.Jump = math.random(0,1)==1
+		hrp.Velocity = Vector3.new(math.random(-250,250),math.random(-500,500),math.random(-250,250))
+		task.wait()
 	until os.clock() - startTime > duration or not target.Character:FindFirstChild("Head")
 
 	-- Cleanup
-	if fakepart then
-		fakepart:Destroy()
-	end
-	if thrust and thrust.Parent then
-		thrust:Destroy()
-	end
+	if heartbeatConn then heartbeatConn:Disconnect() end
+	if fakepart then fakepart:Destroy() end
 end
 
 local orbiting = false
@@ -237,4 +294,5 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopLoopFling()
 end)
+
 
