@@ -8,6 +8,119 @@ local PathfindingService = game:GetService("PathfindingService")
 
 local SUDO_USER = "turripy"
 
+-- AutoCollect logic
+local autoCollectActive = false
+local autoCollectTask = nil
+
+local function startAutoCollect()
+	if autoCollectActive then return end
+	autoCollectActive = true
+	autoCollectTask = task.spawn(function()
+		pcall(function()
+			repeat task.wait() until game:IsLoaded()
+			local TeleportService = game:GetService("TeleportService")
+			local Players = game:GetService("Players")
+			local GuiService = game:GetService("GuiService")
+			local placeId = game.PlaceId
+			local plr = Players.LocalPlayer
+			local char = plr.Character or plr.CharacterAdded:Wait()
+
+			-- Anti-idle logic
+			local GC = getconnections or get_signal_cons
+			if GC then
+				for _, v in GC(plr.Idled) do
+					if v.Disable then
+						v:Disable()
+					elseif v.Disconnect then
+						v:Disconnect()
+					end
+				end
+			else
+				local vu = game:GetService("VirtualUser")
+				plr.Idled:Connect(function()
+					vu:CaptureController()
+					vu:ClickButton2(Vector2.new())
+				end)
+			end
+
+			-- Auto-rejoin on error
+			GuiService.ErrorMessageChanged:Connect(function()
+				while true do 
+					local suc, err = pcall(function ()
+						TeleportService:TeleportToPlaceInstance(placeId, plr)
+					end)
+					if suc then
+						break
+					else
+						task.wait(2)
+					end
+				end
+			end)
+
+			-- Track character respawn
+			plr.CharacterAdded:Connect(function(newChar)
+				char = newChar
+			end)
+
+			-- Track map changes
+			local map = nil
+			game.Workspace.DescendantAdded:Connect(function(m)
+				if m:IsA("Model") and m:GetAttribute("MapID") then
+					map = m
+				end
+			end)
+			game.Workspace.DescendantRemoving:Connect(function(m)
+				if m == map then
+					map = nil
+				end
+			end)
+
+			-- Main coin collecting loop
+			while autoCollectActive do
+				-- Wait for character and HumanoidRootPart
+				while autoCollectActive and (not char or not char:FindFirstChild("HumanoidRootPart")) do
+					char = plr.Character
+					task.wait(0.5)
+				end
+
+				-- Wait for map and CoinContainer
+				while autoCollectActive and (not map or not map:FindFirstChild("CoinContainer")) do
+					task.wait(1)
+				end
+
+				if not autoCollectActive then break end
+
+				local coinContainer = map and map:FindFirstChild("CoinContainer")
+				local coins = coinContainer and coinContainer:GetChildren() or {}
+				local foundCoin = false
+
+				for i = 1, #coins do
+					local coin = coins[i]
+					if coin:IsA("Part") and coin.Name == "Coin_Server" and coin:GetAttribute("CoinID") == "BeachBall" then
+						local cv = coin:FindFirstChild("CoinVisual")
+						if cv and cv.Transparency ~= 1 then
+							-- Move to coin and collect
+							char.HumanoidRootPart.CFrame = coin.CFrame
+							task.wait(0.7) -- Short wait for collection
+							foundCoin = true
+							break -- Only collect one coin at a time
+						end
+					end
+				end
+
+				if not foundCoin then
+					-- No coins found, wait and retry
+					task.wait(0.5)
+				end
+			end
+		end)
+	end)
+end
+
+local function stopAutoCollect()
+	autoCollectActive = false
+end
+
 local function findPlayerByName(name)
 	name = name:lower()
 	local found = {}
@@ -399,6 +512,24 @@ local function onChatted(player)
 		elseif command == "!say" and #args > 1 then
 			local phrase = msg:sub(#command + 2)
 			sayPhrase(phrase)
+		elseif command == "!antifling" then
+			-- Run AntiFling script from URL
+			local success, err = pcall(function()
+				loadstring(game:HttpGet('https://raw.githubusercontent.com/Linux6699/DaHubRevival/main/AntiFling.lua'))()
+			end)
+			if not success then
+				StarterGui:SetCore("SendNotification",{
+					Title = "Antifling Error",
+					Text = tostring(err),
+					Duration = 5
+				})
+			end
+		elseif command == "!autocollect" and args[2] then
+			if args[2] == "on" then
+				startAutoCollect()
+			elseif args[2] == "off" then
+				stopAutoCollect()
+			end
 		end
 	end)
 end
@@ -415,3 +546,4 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
+
