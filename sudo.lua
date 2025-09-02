@@ -261,13 +261,15 @@ local function startFollow(targetPlayer)
 			myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
 			targetHRP = followTarget.Character.HumanoidRootPart
 			if not myHRP or not myHumanoid or not targetHRP then
-				task.wait(0.2)
+				task.wait(0.1)
 				continue
 			end
 
-			-- Recalculate path if target moved significantly or every 0.5s
-			local targetMoved = (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 2)
-			local timeElapsed = (os.clock() - lastPathTime) > 0.5
+			-- Remove teleportation logic for natural movement
+
+			-- Recalculate path if target moved >1 stud or every 0.2s
+			local targetMoved = (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 1)
+			local timeElapsed = (os.clock() - lastPathTime) > 0.2
 			if targetMoved or timeElapsed or not path or path.Status ~= Enum.PathStatus.Success then
 				lastTargetPos = targetHRP.Position
 				lastPathTime = os.clock()
@@ -288,8 +290,8 @@ local function startFollow(targetPlayer)
 				if not followActive then break end
 				local wp = waypoints[i]
 				if wp and myHumanoid then
-					-- If target moved significantly, break and recalc path
-					if (targetHRP.Position - lastTargetPos).Magnitude > 2 then
+					-- If target moved >1 stud, break and recalc path
+					if (targetHRP.Position - lastTargetPos).Magnitude > 1 then
 						break
 					end
 					myHumanoid:MoveTo(wp.Position)
@@ -301,11 +303,15 @@ local function startFollow(targetPlayer)
 						reached = true
 					end)
 					local t0 = os.clock()
-					while not reached and followActive and (os.clock()-t0 < 1.5) do
-						task.wait(0.05)
+					while not reached and followActive and (os.clock()-t0 < 0.7) do
+						task.wait(0.03)
+						-- If target moved >1 stud, break and recalc path
+						if (targetHRP.Position - lastTargetPos).Magnitude > 1 then
+							break
+						end
 					end
 					moveConn:Disconnect()
-					task.wait(0.05)
+					task.wait(0.03)
 				end
 				-- If path is not valid, break and recompute
 				if path.Status == Enum.PathStatus.NoPath then
@@ -314,7 +320,7 @@ local function startFollow(targetPlayer)
 			end
 
 			-- Short delay before next path check
-			task.wait(0.1)
+			task.wait(0.05)
 		end
 		followActive = false
 		followTarget = nil
@@ -400,3 +406,4 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
+
