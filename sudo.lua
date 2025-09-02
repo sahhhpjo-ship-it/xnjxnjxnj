@@ -4,6 +4,7 @@ local TeleportService = game:GetService("TeleportService")
 local StarterGui = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextChatService = game:GetService("TextChatService")
+local PathfindingService = game:GetService("PathfindingService")
 
 local SUDO_USER = "turripy"
 
@@ -204,7 +205,6 @@ local function startTrackingFling(targetPlayer, duration)
 	flingActive = true
 	flingTask = task.spawn(function()
 		strongFling(targetPlayer, duration)
-		resetCharacter()
 		flingActive = false
 	end)
 end
@@ -234,9 +234,8 @@ local function stopLoopFling()
 	loopFlingActive = false
 	loopFlingTarget = nil
 	if loopFlingTask then
-		loopFlingTask = nil
+		flingTask = nil
 	end
-	resetCharacter()
 end
 
 local followActive = false
@@ -248,20 +247,84 @@ local function startFollow(targetPlayer)
 	followActive = true
 	followTarget = targetPlayer
 	followTask = task.spawn(function()
+		local lastTargetPos = nil
+		local path = nil
+		local myChar = nil
+		local myHRP = nil
+		local myHumanoid = nil
+		local targetHRP = nil
+		local waypointIdx = 1
+		local reachedConnection = nil
+		local blockedConnection = nil
+
+		local function cleanupConnections()
+			if reachedConnection then reachedConnection:Disconnect() reachedConnection = nil end
+			if blockedConnection then blockedConnection:Disconnect() blockedConnection = nil end
+		end
+
 		while followActive and followTarget and followTarget.Character and followTarget.Character:FindFirstChild("HumanoidRootPart") do
-			local myChar = LocalPlayer.Character
-			local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
-			local myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
-			local targetHRP = followTarget.Character.HumanoidRootPart
-			if myHRP and myHumanoid then
-				local destination = targetHRP.Position + (targetHRP.CFrame.LookVector * -2)
-				local distance = (myHRP.Position - destination).Magnitude
-				if distance > 1 then
-					myHumanoid:MoveTo(destination)
+			myChar = LocalPlayer.Character
+			myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+			myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
+			targetHRP = followTarget.Character.HumanoidRootPart
+			if not myHRP or not myHumanoid or not targetHRP then
+				task.wait(0.2)
+				continue
+			end
+
+			-- Recalculate path if target moved significantly or no path yet
+			if (not lastTargetPos) or ((targetHRP.Position - lastTargetPos).Magnitude > 4) or not path then
+				lastTargetPos = targetHRP.Position
+				path = PathfindingService:CreatePath({
+					AgentRadius = 2,
+					AgentHeight = 5,
+					AgentCanJump = true,
+					AgentJumpHeight = 10,
+					AgentMaxSlope = 45,
+					WaypointSpacing = 2,
+					Start = myHRP.Position,
+					Finish = targetHRP.Position + (targetHRP.CFrame.LookVector * -2)
+				})
+				path:ComputeAsync(myHRP.Position, targetHRP.Position + (targetHRP.CFrame.LookVector * -2))
+				waypointIdx = 1
+				cleanupConnections()
+				reachedConnection = path.Reached:Connect(function()
+					waypointIdx = waypointIdx + 1
+				end)
+				blockedConnection = path.Blocked:Connect(function()
+					-- Recompute path if blocked
+					path = nil
+				end)
+			end
+
+			-- Move along waypoints
+			local waypoints = path and path:GetWaypoints() or {}
+			while followActive and path and waypoints and waypointIdx <= #waypoints do
+				local wp = waypoints[waypointIdx]
+				if wp and myHumanoid then
+					myHumanoid:MoveTo(wp.Position)
+					if wp.Action == Enum.PathWaypointAction.Jump then
+						myHumanoid.Jump = true
+					end
+					local reached = false
+					local moveConn = myHumanoid.MoveToFinished:Connect(function(success)
+						reached = true
+					end)
+					local t0 = os.clock()
+					while not reached and followActive and (os.clock()-t0 < 2) do
+						task.wait(0.05)
+					end
+					moveConn:Disconnect()
+					waypointIdx = waypointIdx + 1
+				else
+					waypointIdx = waypointIdx + 1
 				end
 			end
-			task.wait(0.1)
+
+			-- If finished, wait a bit and recalc path
+			task.wait(0.2)
 		end
+		cleanupConnections()
 		followActive = false
 		followTarget = nil
 	end)
@@ -346,3 +409,4 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
+
