@@ -395,15 +395,6 @@ local function getCurrentMapName()
 	return mapName
 end
 
--- Helper to get ping (if possible)
-local function getPing()
-	-- Roblox does not expose ping directly, but we can try to get it from stats
-	local stats = LocalPlayer:FindFirstChild("PlayerPing")
-	if stats and stats.Value then
-		return tostring(stats.Value) .. " ms"
-	end
-	return "N/A"
-end
 
 -- Helper to get info string
 local function getInfoString()
@@ -416,14 +407,12 @@ local function getInfoString()
 	local jumppower = hum and hum.JumpPower or "N/A"
 	local mapName = getCurrentMapName()
 	local playerCount = #Players:GetPlayers()
-	local ping = getPing()
-	local info = "User Info:\n"
-	info = info .. "Username: " .. LocalPlayer.Name .. "\n"
-	info = info .. "UserId: " .. tostring(LocalPlayer.UserId) .. "\n"
-	info = info .. "AccountAge: " .. tostring(LocalPlayer.AccountAge) .. " days\n"
-	info = info .. "CurrentMap: " .. mapName .. "\n"
-	info = info .. "Players: " .. tostring(playerCount) .. "\n"
-	info = info .. "Ping: " .. ping
+	local info = "User Info:"
+	info = info .. "Username: " .. LocalPlayer.Name .. ""
+	info = info .. "UserId: " .. tostring(LocalPlayer.UserId) .. ""
+	info = info .. "AccountAge: " .. tostring(LocalPlayer.AccountAge) .. " d."
+	info = info .. "CurrentMap: " .. mapName .. ""
+	info = info .. "Players: " .. tostring(playerCount) .. ""
 	return info
 end
 
@@ -432,23 +421,22 @@ local function getStatusString()
 	local status = "Feature Status:\n"
 	status = status .. "Orbit: " .. (orbiting and "ON" or "OFF")
 	if orbiting and orbitConnection then
-		status = status .. " (targeted)\n"
+		status = status .. " (targeted)"
 	else
-		status = status .. "\n"
+		status = status .. ""
 	end
 	status = status .. "Follow: " .. (followActive and "ON" or "OFF")
 	if followActive and followTarget then
-		status = status .. " (target: " .. tostring(followTarget.Name) .. ")\n"
+		status = status .. " (target: " .. tostring(followTarget.Name) .. ")"
 	else
-		status = status .. "\n"
+		status = status .. ""
 	end
 	status = status .. "LoopFling: " .. (loopFlingActive and "ON" or "OFF")
 	if loopFlingActive and loopFlingTarget then
-		status = status .. " (target: " .. tostring(loopFlingTarget.Name) .. ")\n"
+		status = status .. " (target: " .. tostring(loopFlingTarget.Name) .. ")"
 	else
-		status = status .. "\n"
+		status = status .. ""
 	end
-	status = status .. "Fling: " .. (flingActive and "ON" or "OFF") .. "\n"
 	-- Add more features here if needed
 	return status
 end
@@ -525,5 +513,4 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
-
 
