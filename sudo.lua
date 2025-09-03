@@ -405,14 +405,11 @@ end
 
 -- Helper to get info string
 local function getInfoString()
-	local char = LocalPlayer.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	local hum = char and char:FindFirstChild("Humanoid")
 	local mapName = getCurrentMapName()
 	local playerCount = #Players:GetPlayers()
 	local info = "User Info:\n"
-	info = info .. "CurrentMap: " .. mapName .. ""
-	info = info .. "Players: " .. tostring(playerCount) .. ""
+	info = info .. "CurrentMap: " .. mapName .. "\n"
+	info = info .. "Players: " .. tostring(playerCount)
 	return info
 end
 
@@ -439,6 +436,29 @@ local function getStatusString()
 	end
 	-- Add more features here if needed
 	return status
+end
+
+-- Helper to show notification or fallback to system message
+local function showNotification(title, text, duration)
+	local success, err = pcall(function()
+		StarterGui:SetCore("SendNotification",{
+			Title = title,
+			Text = text,
+			Duration = duration or 8
+		})
+	end)
+	if not success then
+		-- Fallback to system message
+		pcall(function()
+			StarterGui:SetCore("ChatMakeSystemMessage",{
+				Text = "[" .. title .. "] " .. text,
+				Color = Color3.new(1, 1, 0),
+				Font = Enum.Font.SourceSansBold,
+				FontSize = Enum.FontSize.Size24
+			})
+		end)
+		print("Notification fallback: " .. tostring(err))
+	end
 end
 
 local function onChatted(player)
@@ -485,28 +505,16 @@ local function onChatted(player)
 				loadstring(game:HttpGet('https://raw.githubusercontent.com/Linux6699/DaHubRevival/main/AntiFling.lua'))()
 			end)
 			if not success then
-				StarterGui:SetCore("SendNotification",{
-					Title = "Antifling Error",
-					Text = tostring(err),
-					Duration = 5
-				})
+				showNotification("Antifling Error", tostring(err), 5)
 			end
 		elseif command == "!info" then
 			local info = getInfoString()
 			whisperToSudoUser(info)
-			StarterGui:SetCore("SendNotification",{
-				Title = "Info",
-				Text = info,
-				Duration = 8
-			})
+			showNotification("Info", info, 8)
 		elseif command == "!status" then
 			local status = getStatusString()
 			whisperToSudoUser(status)
-			StarterGui:SetCore("SendNotification",{
-				Title = "Status",
-				Text = status,
-				Duration = 8
-			})
+			showNotification("Status", status, 8)
 		end
 	end)
 end
@@ -523,4 +531,3 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
-
