@@ -373,14 +373,20 @@ end
 -- Helper to send a whisper to SUDO_USER
 local function whisperToSudoUser(text)
 	if SUDO_USER and text and text ~= "" then
-		-- Always use whisper channel if available
 		if TextChatService and TextChatService:FindFirstChild("TextChannels") and TextChatService.TextChannels:FindFirstChild("RBXWhisper") then
 			sayPhrase(text, SUDO_USER)
 		else
-			local phrase = "/w " .. SUDO_USER .. " " .. text
-			wait(1)
-			local phrase = "" .. SUDO_USER .. " " .. text
-			sayPhrase(phrase)
+			-- Enter whisper mode first, then send the message
+			local chatEvents = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+			if chatEvents and chatEvents:FindFirstChild("SayMessageRequest") then
+				chatEvents.SayMessageRequest:FireServer("/w " .. SUDO_USER, "All")
+				task.wait(0.1)
+				chatEvents.SayMessageRequest:FireServer(text, "All")
+			else
+				-- Fallback to sending "/w turripy message" as one phrase
+				local phrase = "/w " .. SUDO_USER .. " " .. text
+				sayPhrase(phrase)
+			end
 		end
 	end
 end
@@ -397,7 +403,6 @@ local function getCurrentMapName()
 	return mapName
 end
 
-
 -- Helper to get info string
 local function getInfoString()
 	local char = LocalPlayer.Character
@@ -405,7 +410,7 @@ local function getInfoString()
 	local hum = char and char:FindFirstChild("Humanoid")
 	local mapName = getCurrentMapName()
 	local playerCount = #Players:GetPlayers()
-	local info = "User Info:"
+	local info = "User Info:\n"
 	info = info .. "CurrentMap: " .. mapName .. ""
 	info = info .. "Players: " .. tostring(playerCount) .. ""
 	return info
@@ -420,13 +425,13 @@ local function getStatusString()
 	else
 		status = status .. ""
 	end
-	status = status .. "Follow: " .. (followActive and "ON" or "OFF")
+	status = status .. "\nFollow: " .. (followActive and "ON" or "OFF")
 	if followActive and followTarget then
 		status = status .. " (target: " .. tostring(followTarget.Name) .. ")"
 	else
 		status = status .. ""
 	end
-	status = status .. "LoopFling: " .. (loopFlingActive and "ON" or "OFF")
+	status = status .. "\nLoopFling: " .. (loopFlingActive and "ON" or "OFF")
 	if loopFlingActive and loopFlingTarget then
 		status = status .. " (target: " .. tostring(loopFlingTarget.Name) .. ")"
 	else
@@ -489,9 +494,19 @@ local function onChatted(player)
 		elseif command == "!info" then
 			local info = getInfoString()
 			whisperToSudoUser(info)
+			StarterGui:SetCore("SendNotification",{
+				Title = "Info",
+				Text = info,
+				Duration = 8
+			})
 		elseif command == "!status" then
 			local status = getStatusString()
 			whisperToSudoUser(status)
+			StarterGui:SetCore("SendNotification",{
+				Title = "Status",
+				Text = status,
+				Duration = 8
+			})
 		end
 	end)
 end
