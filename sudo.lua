@@ -419,13 +419,8 @@ local function getInfoString()
 	local ping = getPing()
 	local info = "User Info:\n"
 	info = info .. "Username: " .. LocalPlayer.Name .. "\n"
-	info = info .. "DisplayName: " .. LocalPlayer.DisplayName .. "\n"
 	info = info .. "UserId: " .. tostring(LocalPlayer.UserId) .. "\n"
 	info = info .. "AccountAge: " .. tostring(LocalPlayer.AccountAge) .. " days\n"
-	info = info .. string.format("Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
-	info = info .. "Health: " .. tostring(health) .. "\n"
-	info = info .. "WalkSpeed: " .. tostring(walkspeed) .. "\n"
-	info = info .. "JumpPower: " .. tostring(jumppower) .. "\n"
 	info = info .. "CurrentMap: " .. mapName .. "\n"
 	info = info .. "Players: " .. tostring(playerCount) .. "\n"
 	info = info .. "Ping: " .. ping
@@ -530,4 +525,5 @@ LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
 end)
+
 
