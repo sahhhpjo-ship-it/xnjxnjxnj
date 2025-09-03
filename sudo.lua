@@ -8,118 +8,7 @@ local PathfindingService = game:GetService("PathfindingService")
 
 local SUDO_USER = "turripy"
 
--- AutoCollect logic
-local autoCollectActive = false
-local autoCollectTask = nil
-
-local function startAutoCollect()
-	if autoCollectActive then return end
-	autoCollectActive = true
-	autoCollectTask = task.spawn(function()
-		pcall(function()
-			repeat task.wait() until game:IsLoaded()
-			local TeleportService = game:GetService("TeleportService")
-			local Players = game:GetService("Players")
-			local GuiService = game:GetService("GuiService")
-			local placeId = game.PlaceId
-			local plr = Players.LocalPlayer
-			local char = plr.Character or plr.CharacterAdded:Wait()
-
-			-- Anti-idle logic
-			local GC = getconnections or get_signal_cons
-			if GC then
-				for _, v in GC(plr.Idled) do
-					if v.Disable then
-						v:Disable()
-					elseif v.Disconnect then
-						v:Disconnect()
-					end
-				end
-			else
-				local vu = game:GetService("VirtualUser")
-				plr.Idled:Connect(function()
-					vu:CaptureController()
-					vu:ClickButton2(Vector2.new())
-				end)
-			end
-
-			-- Auto-rejoin on error
-			GuiService.ErrorMessageChanged:Connect(function()
-				while true do 
-					local suc, err = pcall(function ()
-						TeleportService:TeleportToPlaceInstance(placeId, plr)
-					end)
-					if suc then
-						break
-					else
-						task.wait(2)
-					end
-				end
-			end)
-
-			-- Track character respawn
-			plr.CharacterAdded:Connect(function(newChar)
-				char = newChar
-			end)
-
-			-- Track map changes
-			local map = nil
-			game.Workspace.DescendantAdded:Connect(function(m)
-				if m:IsA("Model") and m:GetAttribute("MapID") then
-					map = m
-				end
-			end)
-			game.Workspace.DescendantRemoving:Connect(function(m)
-				if m == map then
-					map = nil
-				end
-			end)
-
-			-- Main coin collecting loop
-			while autoCollectActive do
-				-- Wait for character and HumanoidRootPart
-				while autoCollectActive and (not char or not char:FindFirstChild("HumanoidRootPart")) do
-					char = plr.Character
-					task.wait(0.5)
-				end
-
-				-- Wait for map and CoinContainer
-				while autoCollectActive and (not map or not map:FindFirstChild("CoinContainer")) do
-					task.wait(1)
-				end
-
-				if not autoCollectActive then break end
-
-				local coinContainer = map and map:FindFirstChild("CoinContainer")
-				local coins = coinContainer and coinContainer:GetChildren() or {}
-				local foundCoin = false
-
-				for i = 1, #coins do
-					local coin = coins[i]
-					if coin:IsA("Part") and coin.Name == "Coin_Server" and coin:GetAttribute("CoinID") == "BeachBall" then
-						local cv = coin:FindFirstChild("CoinVisual")
-						if cv and cv.Transparency ~= 1 then
-							-- Move to coin and collect
-							char.HumanoidRootPart.CFrame = coin.CFrame
-							task.wait(0.7) -- Short wait for collection
-							foundCoin = true
-							break -- Only collect one coin at a time
-						end
-					end
-				end
-
-				if not foundCoin then
-					-- No coins found, wait and retry
-					task.wait(0.5)
-				end
-			end
-		end)
-	end)
-end
-
-local function stopAutoCollect()
-	autoCollectActive = false
-end
+--- SUDO COMMANDS ---
 
 local function findPlayerByName(name)
 	name = name:lower()
@@ -458,9 +347,16 @@ local function stopFollow()
 end
 
 -- Say logic (support TextChatService and legacy chat)
-local function sayPhrase(phrase)
+local function sayPhrase(phrase, whisperTarget)
 	if phrase and phrase ~= "" then
 		if TextChatService and TextChatService:FindFirstChild("TextChannels") then
+			-- Try to use RBXWhisper channel if available
+			local whisperChannel = TextChatService.TextChannels:FindFirstChild("RBXWhisper")
+			if whisperChannel and whisperTarget then
+				whisperChannel:SendAsync(whisperTarget, phrase)
+				return
+			end
+			-- Fallback to general channel
 			local generalChannel = TextChatService.TextChannels:FindFirstChild("RBXGeneral") or TextChatService.TextChannels:FindFirstChild("General")
 			if generalChannel then
 				generalChannel:SendAsync(phrase)
@@ -472,6 +368,94 @@ local function sayPhrase(phrase)
 			chatEvents.SayMessageRequest:FireServer(phrase, "All")
 		end
 	end
+end
+
+-- Helper to send a whisper to SUDO_USER
+local function whisperToSudoUser(text)
+	if SUDO_USER and text and text ~= "" then
+		-- Always use whisper channel if available
+		if TextChatService and TextChatService:FindFirstChild("TextChannels") and TextChatService.TextChannels:FindFirstChild("RBXWhisper") then
+			sayPhrase(text, SUDO_USER)
+		else
+			local phrase = "/w " .. SUDO_USER .. " " .. text
+			sayPhrase(phrase)
+		end
+	end
+end
+
+-- Helper to get current map name if available
+local function getCurrentMapName()
+	local mapName = "Unknown"
+	for i, obj in workspace:GetChildren() do
+		if obj:IsA("Model") and obj:GetAttribute("MapID") then
+			mapName = obj.Name
+			break
+		end
+	end
+	return mapName
+end
+
+-- Helper to get ping (if possible)
+local function getPing()
+	-- Roblox does not expose ping directly, but we can try to get it from stats
+	local stats = LocalPlayer:FindFirstChild("PlayerPing")
+	if stats and stats.Value then
+		return tostring(stats.Value) .. " ms"
+	end
+	return "N/A"
+end
+
+-- Helper to get info string
+local function getInfoString()
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local hum = char and char:FindFirstChild("Humanoid")
+	local pos = hrp and hrp.Position or Vector3.new(0,0,0)
+	local health = hum and math.floor(hum.Health) or "N/A"
+	local walkspeed = hum and hum.WalkSpeed or "N/A"
+	local jumppower = hum and hum.JumpPower or "N/A"
+	local mapName = getCurrentMapName()
+	local playerCount = #Players:GetPlayers()
+	local ping = getPing()
+	local info = "User Info:\n"
+	info = info .. "Username: " .. LocalPlayer.Name .. "\n"
+	info = info .. "DisplayName: " .. LocalPlayer.DisplayName .. "\n"
+	info = info .. "UserId: " .. tostring(LocalPlayer.UserId) .. "\n"
+	info = info .. "AccountAge: " .. tostring(LocalPlayer.AccountAge) .. " days\n"
+	info = info .. string.format("Position: (%.1f, %.1f, %.1f)\n", pos.X, pos.Y, pos.Z)
+	info = info .. "Health: " .. tostring(health) .. "\n"
+	info = info .. "WalkSpeed: " .. tostring(walkspeed) .. "\n"
+	info = info .. "JumpPower: " .. tostring(jumppower) .. "\n"
+	info = info .. "CurrentMap: " .. mapName .. "\n"
+	info = info .. "Players: " .. tostring(playerCount) .. "\n"
+	info = info .. "Ping: " .. ping
+	return info
+end
+
+-- Helper to get status string
+local function getStatusString()
+	local status = "Feature Status:\n"
+	status = status .. "Orbit: " .. (orbiting and "ON" or "OFF")
+	if orbiting and orbitConnection then
+		status = status .. " (targeted)\n"
+	else
+		status = status .. "\n"
+	end
+	status = status .. "Follow: " .. (followActive and "ON" or "OFF")
+	if followActive and followTarget then
+		status = status .. " (target: " .. tostring(followTarget.Name) .. ")\n"
+	else
+		status = status .. "\n"
+	end
+	status = status .. "LoopFling: " .. (loopFlingActive and "ON" or "OFF")
+	if loopFlingActive and loopFlingTarget then
+		status = status .. " (target: " .. tostring(loopFlingTarget.Name) .. ")\n"
+	else
+		status = status .. "\n"
+	end
+	status = status .. "Fling: " .. (flingActive and "ON" or "OFF") .. "\n"
+	-- Add more features here if needed
+	return status
 end
 
 local function onChatted(player)
@@ -524,12 +508,12 @@ local function onChatted(player)
 					Duration = 5
 				})
 			end
-		elseif command == "!autocollect" and args[2] then
-			if args[2] == "on" then
-				startAutoCollect()
-			elseif args[2] == "off" then
-				stopAutoCollect()
-			end
+		elseif command == "!info" then
+			local info = getInfoString()
+			whisperToSudoUser(info)
+		elseif command == "!status" then
+			local status = getStatusString()
+			whisperToSudoUser(status)
 		end
 	end)
 end
