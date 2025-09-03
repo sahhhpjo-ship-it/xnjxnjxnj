@@ -203,8 +203,13 @@ local flingActive = false
 local flingTask = nil
 
 local function startTrackingFling(targetPlayer, duration)
+	-- Always use latest character
 	if flingActive then return end
 	flingActive = true
+	if flingTask then
+		-- If previous task exists, let it finish or clean up
+		flingTask = nil
+	end
 	flingTask = task.spawn(function()
 		strongFling(targetPlayer, duration)
 		flingActive = false
@@ -219,10 +224,19 @@ local function startLoopFling(targetPlayer)
 	if loopFlingActive then return end
 	loopFlingActive = true
 	loopFlingTarget = targetPlayer
+	if loopFlingTask then
+		loopFlingTask = nil
+	end
 	loopFlingTask = task.spawn(function()
 		while loopFlingActive do
+			-- Always use latest character and target
 			if not loopFlingTarget or not loopFlingTarget.Character or not loopFlingTarget.Character:FindFirstChild("HumanoidRootPart") then
-				break
+				task.wait(0.5)
+				continue
+			end
+			if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+				task.wait(0.5)
+				continue
 			end
 			startTrackingFling(loopFlingTarget, 2.5)
 			task.wait(2.7)
@@ -236,7 +250,7 @@ local function stopLoopFling()
 	loopFlingActive = false
 	loopFlingTarget = nil
 	if loopFlingTask then
-		flingTask = nil
+		loopFlingTask = nil
 	end
 end
 
@@ -403,40 +417,6 @@ local function getCurrentMapName()
 	return mapName
 end
 
--- Helper to get info string
-local function getInfoString()
-	local mapName = getCurrentMapName()
-	local playerCount = #Players:GetPlayers()
-	local info = "User Info:\n"
-	info = info .. "CurrentMap: " .. mapName .. "\n"
-	info = info .. "Players: " .. tostring(playerCount)
-	return info
-end
-
--- Helper to get status string
-local function getStatusString()
-	local status = "Feature Status:\n"
-	status = status .. "Orbit: " .. (orbiting and "ON" or "OFF")
-	if orbiting and orbitConnection then
-		status = status .. " (targeted)"
-	else
-		status = status .. ""
-	end
-	status = status .. "\nFollow: " .. (followActive and "ON" or "OFF")
-	if followActive and followTarget then
-		status = status .. " (target: " .. tostring(followTarget.Name) .. ")"
-	else
-		status = status .. ""
-	end
-	status = status .. "\nLoopFling: " .. (loopFlingActive and "ON" or "OFF")
-	if loopFlingActive and loopFlingTarget then
-		status = status .. " (target: " .. tostring(loopFlingTarget.Name) .. ")"
-	else
-		status = status .. ""
-	end
-	-- Add more features here if needed
-	return status
-end
 
 -- Helper to show notification or fallback to system message
 local function showNotification(title, text, duration)
@@ -507,15 +487,8 @@ local function onChatted(player)
 			if not success then
 				showNotification("Antifling Error", tostring(err), 5)
 			end
-		elseif command == "!info" then
-			local info = getInfoString()
-			whisperToSudoUser(info)
-			showNotification("Info", info, 8)
-		elseif command == "!status" then
-			local status = getStatusString()
-			whisperToSudoUser(status)
-			showNotification("Status", status, 8)
 		end
+		-- "!info" and "!status" commands removed from root as requested
 	end)
 end
 
@@ -530,4 +503,17 @@ end)
 LocalPlayer.CharacterAdded:Connect(function()
 	stopOrbit()
 	stopFollow()
+	-- Fix: Restart loopfling if active after respawn
+	if loopFlingActive and loopFlingTarget then
+		-- Stop previous loopfling task if any
+		if loopFlingTask then
+			loopFlingTask = nil
+		end
+		-- Restart loopfling with latest character and target
+		startLoopFling(loopFlingTarget)
+	end
+	-- Reset flingActive and flingTask
+	flingActive = false
+	flingTask = nil
 end)
+
