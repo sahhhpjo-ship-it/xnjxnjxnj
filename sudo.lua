@@ -378,6 +378,8 @@ local function whisperToSudoUser(text)
 			sayPhrase(text, SUDO_USER)
 		else
 			local phrase = "/w " .. SUDO_USER .. " " .. text
+			wait(1)
+			local phrase = "" .. SUDO_USER .. " " .. text
 			sayPhrase(phrase)
 		end
 	end
