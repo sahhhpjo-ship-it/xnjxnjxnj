@@ -401,16 +401,9 @@ local function getInfoString()
 	local char = LocalPlayer.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local hum = char and char:FindFirstChild("Humanoid")
-	local pos = hrp and hrp.Position or Vector3.new(0,0,0)
-	local health = hum and math.floor(hum.Health) or "N/A"
-	local walkspeed = hum and hum.WalkSpeed or "N/A"
-	local jumppower = hum and hum.JumpPower or "N/A"
 	local mapName = getCurrentMapName()
 	local playerCount = #Players:GetPlayers()
 	local info = "User Info:"
-	info = info .. "Username: " .. LocalPlayer.Name .. ""
-	info = info .. "UserId: " .. tostring(LocalPlayer.UserId) .. ""
-	info = info .. "AccountAge: " .. tostring(LocalPlayer.AccountAge) .. " d."
 	info = info .. "CurrentMap: " .. mapName .. ""
 	info = info .. "Players: " .. tostring(playerCount) .. ""
 	return info
